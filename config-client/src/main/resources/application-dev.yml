@@ -1,0 +1,7 @@
+server:
+  port: 8080
+spring:
+  r2dbc:
+    url: r2dbc:mysql://localhost:3306/test?autoReconnect=true&useUnicode=true&characterEncoding=UTF-8&zeroDateTimeBehavior=convertToNull&useSSL=false&useTimezone=true&serverZoneId=Asia/Shanghai
+    username: root
+    password: root
