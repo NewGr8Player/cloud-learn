@@ -1,0 +1,127 @@
+global-variables:
+  - &default_cache_settings
+    image: drillster/drone-volume-cache
+    settings:
+    volumes:
+      - name: cache
+        path: /cache
+    when:
+      ref:
+        include:
+          - refs/heads/feature/*
+          - refs/heads/main
+          - refs/heads/dev
+          - refs/tags/*
+      event:
+        include:
+          - push
+          - pull_request
+          - tag
+
+
+kind: pipeline
+name: ci-demo
+
+volumes:
+  - name: cache
+    host:
+      path: /tmp/cache
+
+steps:
+  - name: restore-cache
+    <<: *default_cache_settings
+    settings:
+      restore: true
+      mount:
+        - ./docker
+        - ./.m2
+
+  - name: unit-test
+    image: maven:3.8.5-openjdk-17
+    commands:
+      - mvn -Dmaven.repo.local=/drone/src/.m2/repository test
+    when:
+      branch:
+        include:
+          - feature/*
+          - main
+          - dev
+      event:
+        include:
+          - push
+          - pull_request
+
+  - name: build-test
+    image: maven:3.8.5-openjdk-17
+    commands:
+      - mvn -Dmaven.repo.local=/drone/src/.m2/repository clean package -Ptest
+    mount:
+      - ./docker
+      - ./.m2
+    when:
+      branch:
+        include:
+          - feature/*
+          - main
+          - dev
+      event:
+        include:
+          - push
+          - pull_request
+
+  - name: build-prod
+    image: maven:3.8.5-openjdk-17
+    commands:
+      - mvn -Dmaven.repo.local=/drone/src/.m2/repository clean package -Pprod
+    mount:
+      - ./docker
+      - ./.m2
+    when:
+      event: tag
+
+  - name: rebuild-cache
+    <<: *default_cache_settings
+    settings:
+      rebuild: true
+      mount:
+        - ./docker
+        - ./.m2
+
+  # Release
+  - name: tagged_release
+    image: plugins/gitea-release
+    settings:
+      base_url: http://giteax.vip.cpolar.cn
+      files: target/*.jar
+      file_exists: fail
+      checksum:
+        - md5
+        - sha1
+        - sha256
+      api_key:
+        from_secret: GITEA_API_KEY
+      insecure: true
+    when:
+      event: tag
+
+  # E-mail notify
+  - name: notify
+    image: drillster/drone-email
+    settings:
+      port: 25
+      from:
+        from_secret: EMAIL_FROM
+      host:
+        from_secret: EMAIL_HOST
+      username:
+        from_secret: EMAIL_USERNAME
+      password:
+        from_secret: EMAIL_PASSWORD
+      skip_verify: true
+      recipients:
+        from_secret: EMAIL_RECIPIENTS
+      recipients_only: true
+    when:
+      status:
+        - success
+        - failure
